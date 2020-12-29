@@ -85,7 +85,9 @@ class SerialDevice(object):
         if not self.is_open:
             self.open()
 
-        result = self._serial.readline()
+        result = None
+        while result is None:
+            result = self._serial.readline()
         self._logger('read', result)
 
         return result

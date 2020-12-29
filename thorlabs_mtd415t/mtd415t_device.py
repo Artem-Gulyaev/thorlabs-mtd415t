@@ -21,9 +21,29 @@ n@darkwahoppong.com
 
 from time import sleep
 
-from .helpers import validate_is_float_or_int, validate_is_in_range
-from .serial_device import SerialDevice
+try:
+    from .helpers import validate_is_float_or_int, validate_is_in_range
+    from .serial_device import SerialDevice
+except (ValueError, ImportError) as e:
+    # in case we use the file by importing it as a file, not as a module
+    # this is relevan if used not from installed system modules
+    print("MTD415T library not installed as a system module"
+          "using raw file imports to bring the things up")
 
+    import os
+    import imp
+
+    current_source_dir = os.path.dirname(os.path.abspath(__file__))
+    helpers_module = imp.load_source(
+            "helpers", os.path.join(current_source_dir
+                                    , "helpers.py"))
+    validate_is_float_or_int = helpers_module.validate_is_float_or_int
+    validate_is_in_range = helpers_module.validate_is_in_range
+
+    serial_device_module = imp.load_source(
+            "serial_device", os.path.join(current_source_dir
+                                          , "serial_device.py"))
+    SerialDevice = serial_device_module.SerialDevice
 
 class MTD415TDevice(SerialDevice):
     """
@@ -100,11 +120,24 @@ class MTD415TDevice(SerialDevice):
             value (int): Set value
         """
         value = int(value)
-        cmd = '{}{:d}'.format(setting, value).encode('ascii')
+        value_str = '{:d}'.format(value).encode('ascii')
+        cmd = '{}'.format(setting).encode('ascii') + value_str
         self.write(cmd)
 
-        # ensure returned data is removed from the buffer
-        self.read()
+        # NOTE: the device answers with the set value, example, if
+        #       to set TEC current limit to: 0.5 A  (500 mA units)
+        #       device will respond with following exactly:
+        #
+        #           500
+        #
+        #       and if set wrong value, say TEC current limit to
+        #       0.1 A it will answer with following exactly:
+        #
+        #           value out of range (200...2000 mA)
+        confirmation = self.read().strip()
+        if confirmation != value_str:
+            raise ValueError("Device reported an error in '%s' setting to %s, error: %s"
+                             % (str(setting), value_str, str(confirmation)))
 
         if self._auto_save:
             self.save()
