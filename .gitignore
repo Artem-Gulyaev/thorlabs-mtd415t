@@ -48,3 +48,7 @@ pytest-local.py
 # jupyter notebooks
 .ipynb_checkoints
 test*.ipynb
+
+# vim temp files
+*.swp
+*.swo
