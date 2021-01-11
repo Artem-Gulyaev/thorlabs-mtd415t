@@ -22,6 +22,7 @@ class SerialDevice(object):
         from serial import serial_for_url
 
         self._serial = serial_for_url(port, baudrate=baudrate, **kwargs)
+        self.timeout = kwargs["timeout"] if "timeout" in kwargs else None
 
         self._log = []
         self._max_log_length = max_log_length
@@ -86,8 +87,11 @@ class SerialDevice(object):
             self.open()
 
         result = None
+        start = time()
         while result is None:
             result = self._serial.readline()
+            if (self.timeout is not None) and (time() - start > self.timeout):
+                break
         self._logger('read', result)
 
         return result

@@ -135,6 +135,9 @@ class MTD415TDevice(SerialDevice):
         #
         #           value out of range (200...2000 mA)
         confirmation = self.read().strip()
+        if confirmation is None:
+            raise RuntimeError("Timeout for setting %s to %s"
+                               %(str(setting), value_str))
         if confirmation != value_str:
             raise ValueError("Device reported an error in '%s' setting to %s, error: %s"
                              % (str(setting), value_str, str(confirmation)))
@@ -168,24 +171,31 @@ class MTD415TDevice(SerialDevice):
     @property
     def idn(self):
         """Product name and version number (string)"""
-        return self.query('m', True).decode('ascii')
+        res = self.query('m', True)
+        return res.decode('ascii') if res is not None else "<timeout>"
 
     @property
     def uid(self):
         """Unique device identifier (string)"""
-        return self.query('u', True).decode('ascii')
+        res = self.query('u', True)
+        return res.decode('ascii') if res is not None else "<timeout>"
 
     @property
     def error_flags(self):
         """Error flags from the error register of the device (tuple, LSB
         first)"""
-        err = int(self.query('E', True).decode('ascii'))
+        val = self.query('E', True)
+        if val is None:
+            return "<timeout>"
+        err = int(val.decode('ascii'))
         return tuple(c == '1' for c in reversed('{:016b}'.format(err)))
 
     @property
     def errors(self):
         """Errors from the error register of the device (tuple)"""
         flags = self.error_flags
+        if isinstance(flags , str):
+            return flags;
         errors = []
         for idx, err in self._ERRORS.items():
             if flags[idx] is False:
@@ -199,6 +209,8 @@ class MTD415TDevice(SerialDevice):
     def tec_current_limit(self):
         """TEC current limit in A (float, >= 0.200 and <= 2.000)"""
         value = self.query('L', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @tec_current_limit.setter
@@ -214,24 +226,32 @@ class MTD415TDevice(SerialDevice):
     def tec_current(self):
         """TEC current in A (float)"""
         value = self.query('A', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @property
     def tec_voltage(self):
         """TEC voltage in V (float)"""
         value = self.query('U')
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @property
     def temp(self):
         """Current temperature in ° C (float)"""
         value = self.query('Te', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @property
     def temp_setpoint(self):
         """Temperature setpoint in ° C (float, >= 5.000 and <= 45.000)"""
         value = self.query('T', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @temp_setpoint.setter
@@ -248,6 +268,8 @@ class MTD415TDevice(SerialDevice):
         """Temperature window for the status pin in K (float, >= 1e-3 and <=
         32.768)"""
         value = self.query('W', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @status_temp_window.setter
@@ -264,6 +286,8 @@ class MTD415TDevice(SerialDevice):
     def status_delay(self):
         """Delay for changing the status pin in s (int, >=1 and <= 32768)"""
         value = self.query(b'd', True)
+        if value is None:
+            return "<timeout>"
         return int(value)
 
     @status_delay.setter
@@ -279,6 +303,8 @@ class MTD415TDevice(SerialDevice):
     def critical_gain(self):
         """Critical gain in A/K (float, >=10e-3 and <= 100)"""
         value = self.query('G', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @critical_gain.setter
@@ -294,6 +320,8 @@ class MTD415TDevice(SerialDevice):
     def critical_period(self):
         """Critical period in s (float, >=100e-3 and <= 100.000)"""
         value = self.query('O', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @critical_period.setter
@@ -309,6 +337,8 @@ class MTD415TDevice(SerialDevice):
     def cycling_time(self):
         """Cycling time in s (float, >= 1e-3 and <= 1.000)"""
         value = self.query('C', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @cycling_time.setter
@@ -324,6 +354,8 @@ class MTD415TDevice(SerialDevice):
     def p_gain(self):
         """Proportional gain in A/K (float, >=0 and <= 100.000)"""
         value = self.query('P', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @p_gain.setter
@@ -339,6 +371,8 @@ class MTD415TDevice(SerialDevice):
     def i_gain(self,):
         """Integrator gain in A/(K x s) (float, >=0 and <= 100.000)"""
         value = self.query('I', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @i_gain.setter
@@ -354,6 +388,8 @@ class MTD415TDevice(SerialDevice):
     def d_gain(self):
         """Differential gain in (A x s)/K (float, >=0 and <= 100.000)"""
         value = self.query('D', True)
+        if value is None:
+            return "<timeout>"
         return float(value) / 1e3
 
     @d_gain.setter
