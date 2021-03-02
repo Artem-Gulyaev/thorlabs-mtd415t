@@ -70,9 +70,18 @@ class MTD415TDevice(SerialDevice):
         14: 'invalid command'
     }
 
-    def __init__(self, port, auto_save=False, *args, **kwargs):
+    # @auto_save if set to True, the SW will ask chip to flash
+    #   **EVERY** change of parameters, which basically will
+    #   destroy the flash memory pretty fast, so don't use it
+    #   unless you really need it.
+    # @communication_log the log to use, see also: SerialDevice.__init__
+    #   documentation
+    def __init__(self, port, auto_save=False
+                 , communication_log=None, *args, **kwargs):
         self._auto_save = auto_save
-        super(MTD415TDevice, self).__init__(port, baudrate=115200, **kwargs)
+        super(MTD415TDevice, self).__init__(
+                port, baudrate=115200, log_file=communication_log
+                , **kwargs)
 
     def query(self, setting, retry=False):
         """
@@ -136,17 +145,21 @@ class MTD415TDevice(SerialDevice):
         #           value out of range (200...2000 mA)
         confirmation = self.read().strip()
         if confirmation is None:
+            self.print_dump_log()
             raise RuntimeError("Timeout for setting %s to %s"
                                %(str(setting), value_str))
         if confirmation != value_str:
+            self.print_dump_log()
             raise ValueError("Device reported an error in '%s' setting to %s, error: %s"
                              % (str(setting), value_str, str(confirmation)))
 
         if self._auto_save:
+            print("WARNING: Using auto-save mode! This warning persists.")
             self.save()
 
     def save(self):
         """Save settings to non-volatile memory"""
+        print("WARNING: Saving config to flash memory.")
         self.write('M')
 
         # ensure returned data is removed from the buffer
