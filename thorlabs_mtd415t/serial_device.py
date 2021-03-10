@@ -116,6 +116,7 @@ class SerialDevice(object):
         while result is None:
             result = self._serial.readline()
             if (self.timeout is not None) and (time() - start > self.timeout):
+                result = None
                 break
         self._logger('read', result)
 
@@ -138,6 +139,6 @@ class SerialDevice(object):
 
     # Prints the dump_log.
     def print_dump_log(self):
-        print("----------- COMMUNICATION LOG DUMP ------------")
-        print(self.dump_log())
+        print("------- MTD415 COMMUNICATION LOG DUMP ---------")
+        print(self.dump_log)
         print("--------- COMMUNICATION LOG DUMP END ----------")

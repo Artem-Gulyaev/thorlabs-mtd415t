@@ -19,7 +19,7 @@ Nelson Darkwah Oppong, December 2017
 n@darkwahoppong.com
 """
 
-from time import sleep
+from time import sleep, time
 
 try:
     from .helpers import validate_is_float_or_int, validate_is_in_range
@@ -76,9 +76,17 @@ class MTD415TDevice(SerialDevice):
     #   unless you really need it.
     # @communication_log the log to use, see also: SerialDevice.__init__
     #   documentation
+    # @minimal_query_interval_s minimal time since end of a query and
+    #   a beginning of the next one, if query is requested earlier,
+    #   then we will throttle a bit to not to overhelm the chip
+    #   (otherwise it will complain on "bad command")
     def __init__(self, port, auto_save=False
-                 , communication_log=None, *args, **kwargs):
+                 , communication_log=None
+                 , minimal_query_interval_s=0.01
+                 , *args, **kwargs):
         self._auto_save = auto_save
+        self.last_query_time_s = time()
+        self.min_query_interval_s = 0.01
         super(MTD415TDevice, self).__init__(
                 port, baudrate=115200, log_file=communication_log
                 , **kwargs)
@@ -96,13 +104,21 @@ class MTD415TDevice(SerialDevice):
             string: The setting value
         """
 
+        # NOTE: here we will slow down a bit, it looks like device
+        #   can not always fit into the exchange at max speed, so
+        #   we will introduce some delays between requests:
+        idle_time_s = self.min_query_interval_s - (time() - self.last_query_time_s)
+        if idle_time_s > 0:
+            sleep(idle_time_s)
+
         if type(setting) == str:
             setting = setting.encode('ascii')
 
         cmd = setting + b'?'
         result = super(MTD415TDevice, self).query(cmd)
+        self.last_query_time_s = time()
 
-        if retry is True and result == b'unknown command\n':
+        if retry is True and (result == b'unknown command\n' or result is None):
             sleep(0.1)  # wait 100ms before retrying the same command
             return self.query(setting, retry=True)
         else:
