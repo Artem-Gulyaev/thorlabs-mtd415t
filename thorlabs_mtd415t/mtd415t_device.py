@@ -57,18 +57,29 @@ class MTD415TDevice(SerialDevice):
             non-volatile memory after any change
     """
 
+    ERROR_BIT_NOT_ENABLED = 0
+    ERROR_BIT_OVERTEMP = 1
+    ERROR_BIT_LATCH_UP = 2
+    ERROR_BIT_CYCLING_TIME_SMALL = 3
+    ERROR_BIT_NO_SENSOR = 4
+    ERROR_BIT_NO_TEC = 5
+    ERROR_BIT_TEC_WRONG_POLARITY = 6
+    ERROR_BIT_VAL_OUT_OF_RANGE = 13
+    ERROR_BIT_INVALID_COMMAND = 14
+
     # error bits, see MTD415T datasheet, p. 18
     _ERRORS = {
-        0:  'not enabled',
-        1:  'internal temperature too high',
-        2:  'thermal latch-up',
-        3:  'cycling time too small',
-        4:  'no sensor',
-        5:  'no tec',
-        6:  'tec polarity reversed',
-        13: 'value out of range',
-        14: 'invalid command'
+        ERROR_BIT_NOT_ENABLED:  'not enabled',
+        ERROR_BIT_OVERTEMP:  'internal temperature too high',
+        ERROR_BIT_LATCH_UP:  'thermal latch-up',
+        ERROR_BIT_CYCLING_TIME_SMALL:  'cycling time too small',
+        ERROR_BIT_NO_SENSOR:  'no sensor',
+        ERROR_BIT_NO_TEC:  'no tec',
+        ERROR_BIT_TEC_WRONG_POLARITY:  'tec polarity reversed',
+        ERROR_BIT_VAL_OUT_OF_RANGE: 'value out of range',
+        ERROR_BIT_INVALID_COMMAND: 'invalid command'
     }
+
 
     # @auto_save if set to True, the SW will ask chip to flash
     #   **EVERY** change of parameters, which basically will
@@ -233,6 +244,113 @@ class MTD415TDevice(SerialDevice):
             errors.append(err)
 
         return tuple(errors)
+
+    #################################################################
+    ###                       DANGEROUS AREA                      ###
+    ### IMPROPER USE OF THE SAFETY BITMASK MAY DAMAGE YOUR DEVICE ###
+    ###                       DANGEROUS AREA                      ###
+    #################################################################
+
+    # RETURNS: currently unmasked errors dict (those
+    #       which being detected disable TEC current) in a form of
+    #           error code -> error name
+    @property
+    def safety_mask(self):
+        value = self.query('S', True)
+        if value is None:
+            return "<timeout>"
+        value = int(value)
+        unmasked_dict = {}
+        for key,val in self._ERRORS.items():
+            if ((value >> key) & 0x1) == 0x1:
+                unmasked_dict[key] = val
+
+        return unmasked_dict;
+
+    # For safety reasons we need to check the safety mask
+    # in a detailed way.
+    # RETURNS: None
+    #   NOTE: if mask is bad, just throws immediately
+    def _verify_mask_val(self, mask):
+        if not isinstance(mask, int):
+            raise ValueError("Intended mask value is not an integer: %s"
+                             % (mask))
+
+        # generic range
+        MIN_MASK = 0
+        MAX_MASK = 32768
+        if (mask < MIN_MASK or mask > MAX_MASK):
+            raise ValueError("Intended mask value is out of range [%d; %d]: %d"
+                             % (MIN_MASK, MAX_MASK, mask))
+        
+        # must-stay mask values
+        for err_code in [self.ERROR_BIT_NOT_ENABLED
+                         , self.ERROR_BIT_OVERTEMP
+                         , self.ERROR_BIT_CYCLING_TIME_SMALL
+                         , self.ERROR_BIT_NO_SENSOR
+                         , self.ERROR_BIT_NO_TEC
+                         , self.ERROR_BIT_TEC_WRONG_POLARITY]:
+            if (mask >> err_code) & 0x01 != 0x01:
+                raise ValueError("The mask suddenly has an '%s' error masked!!!"
+                                 " Mask under check: %d. Aborting! Will not set!"
+                                 % (self._ERRORS[err_code], mask))
+
+    # Enable "latch-up" error to stop the TEC.
+    #
+    # NOTE: only per-case unmasking is enabled to reduce error probablity
+    def unmask_error_latch_up(self):
+        current_mask_dict = self.safety_mask
+
+        # already set
+        if self.ERROR_BIT_LATCH_UP in current_mask_dict.keys():
+            return
+
+        new_mask = 0
+        for key,val in current_mask_dict.items():
+            new_mask = new_mask | (0x1 << key)
+
+        new_mask = new_mask | (0x1 << self.ERROR_BIT_LATCH_UP)
+
+        self._verify_mask_val(new_mask)
+        self.set('S', new_mask)
+
+    # Disable "latch-up" error to stop the TEC.
+    #
+    # NOTE: only per-case unmasking is enabled to reduce error probablity
+    def mask_error_latch_up(self):
+        current_mask_dict = self.safety_mask
+
+        # already unset
+        if self.ERROR_BIT_LATCH_UP not in current_mask_dict.keys():
+            return
+
+        new_mask = 0
+        for key,val in current_mask_dict.items():
+            new_mask = new_mask | (0x1 << key)
+
+        new_mask = new_mask & (~(0x1 << self.ERROR_BIT_LATCH_UP))
+
+        self._verify_mask_val(new_mask)
+        self.set('S', new_mask)
+
+    # RETURNS: if the latch-up error halts the TEC control
+    @property
+    def error_latch_up_unblocked(self):
+        current_mask_dict = self.safety_mask
+        return self.ERROR_BIT_LATCH_UP in current_mask_dict.keys()
+
+    # If set to True: latch-up error halts the TEC control
+    # otherwise: not
+    @error_latch_up_unblocked.setter
+    def error_latch_up_unblocked(self, value):
+        if value:
+            self.unmask_error_latch_up()
+        else:
+            self.mask_error_latch_up()
+
+    #################################################################
+    ###                   DANGEROUS AREA END                      ###
+    #################################################################
 
     @property
     def tec_current_limit(self):
